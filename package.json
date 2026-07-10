@@ -1,6 +1,6 @@
 {
   "name": "@datalens-tech/docs",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": false,
   "scripts": {
     "build": "npx @diplodoc/cli --input ./docs --output ./build/opensource/docs --config ./.yfm-docs",
