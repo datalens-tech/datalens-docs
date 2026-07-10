@@ -1,12 +1,9 @@
 name: Release
 
 on:
-  workflow_dispatch:
-  workflow_run:
-    workflows:
-      - Up version
+  pull_request:
     types:
-      - completed
+      - closed
 
 concurrency:
   group: ${{ github.workflow }}
@@ -18,28 +15,40 @@ permissions:
 jobs:
   run:
     name: release
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release-') && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    if: ${{ github.actor == 'robot-charts' || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: main
           fetch-depth: 0
+      - name: configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: create and push tag
+        id: release_tag
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          tag="${HEAD_REF#release-}"
+          version="${tag#v}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists"
+            exit 0
+          fi
+
+          git tag "${tag}"
+          git push origin "${tag}"
+      - name: checkout release tag
+        run: git checkout ${{ steps.release_tag.outputs.tag }}
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 20
           cache: 'npm'
-      - name: get latest tag
-        id: tag
-        run: |
-          git fetch --tags
-          TAG=$(git tag -l "v*" | sort -V | tail -n 1)
-          VERSION=$(echo "${TAG}" | sed 's|^v||')
-          echo "tag: ${TAG}"
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "version: ${VERSION}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-      - name: checkout latest tag
-        run: git checkout ${{ steps.tag.outputs.tag }}
       - name: build
         run: |
           npm ci
@@ -50,14 +59,14 @@ jobs:
       - uses: thedoctor0/zip-release@b57d897cb5d60cb78b51a507f63fa184cfe35554 # 0.7.6
         with:
           type: zip
-          filename: datalens-docs-${{ steps.tag.outputs.version }}.zip
+          filename: datalens-docs-${{ steps.release_tag.outputs.version }}.zip
           directory: build
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: datalens-docs-${{ steps.tag.outputs.version }}
-          path: datalens-docs-${{ steps.tag.outputs.version }}.zip
+          name: datalens-docs-${{ steps.release_tag.outputs.version }}
+          path: build/datalens-docs-${{ steps.release_tag.outputs.version }}.zip
       - uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
         with:
-          artifacts: build/datalens-docs-${{ steps.tag.outputs.version }}.zip
-          name: ${{ steps.tag.outputs.tag }}
-          tag: ${{ steps.tag.outputs.tag }}
+          artifacts: build/datalens-docs-${{ steps.release_tag.outputs.version }}.zip
+          name: ${{ steps.release_tag.outputs.tag }}
+          tag: ${{ steps.release_tag.outputs.tag }}
