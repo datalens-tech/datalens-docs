@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   workflow_run:
     workflows:
-      - Up version
+      - Release
     types:
       - completed
 
@@ -24,7 +24,7 @@ jobs:
   run:
     name: build-docker
     runs-on: ubuntu-latest
-    if: ${{ github.actor == 'robot-charts' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'release-')) }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:

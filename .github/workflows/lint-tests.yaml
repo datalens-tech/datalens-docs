@@ -2,11 +2,6 @@ name: Lint, Tests
 
 on:
   pull_request:
-  workflow_run:
-    workflows:
-      - Up version
-    types:
-      - completed
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.actor }}

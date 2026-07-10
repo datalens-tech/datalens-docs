@@ -1,0 +1,74 @@
+name: Make release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release. Leave empty to bump minor
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  run:
+    name: make-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: up version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "${INPUT_VERSION}" ]; then
+            VERSION=$(npm version "${INPUT_VERSION}" --no-commit-hooks --no-git-tag-version)
+          else
+            VERSION=$(npm version minor --no-commit-hooks --no-git-tag-version)
+          fi
+
+          BRANCH="release-${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "version: ${VERSION}"
+          echo "branch: ${BRANCH}"
+      - name: configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: commit version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BRANCH: ${{ steps.version.outputs.branch }}
+        run: |
+          git switch -c "${BRANCH}"
+          git add package.json package-lock.json
+          git commit -m "Up version to ${VERSION} [release]"
+          git push origin "${BRANCH}"
+      - name: create release pr
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BRANCH: ${{ steps.version.outputs.branch }}
+        with:
+          script: |
+            const title = `Up version to ${process.env.VERSION} [release]`;
+
+            const {data: pull} = await github.rest.pulls.create({
+              ...context.repo,
+              title,
+              head: process.env.BRANCH,
+              base: 'main',
+              body: 'Release PR created by the Make release workflow.',
+            });
+
+            core.info(`Created release PR #${pull.number}: ${pull.html_url}`);
